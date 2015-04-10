@@ -1,6 +1,6 @@
 # Gerrit Tranquility
 
-Script 'n stuff to make your Gerrit experience more enjoyable
+Scripts 'n stuff to make your Gerrit experience more enjoyable
 
 ## Comment Filter
 
