@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gerrit bot comment toggler
 // @namespace    http://nobots.instructure/
-// @version      0.1
+// @version      0.2
 // @description  Because why not
 // @author       Jon
 // @match        https://gerrit.instructure.com/
@@ -18,6 +18,8 @@ var transforms = {
                 var args = [].slice.call(arguments);
                 if (args[1] && args[1].match(/\/changes\/\d+\/revisions\/\w+\/comments/)) {
                     this._isCommentRequest = true;
+                } else if (args[1] && args[1].match(/\/gerrit_ui\/rpc\/PatchDetailService$/)) {
+                    this._isPatchDetailRequest = true
                 }
                     
                 var ret = __super(args);
@@ -34,13 +36,20 @@ var transforms = {
         onreadystatechange: function(__super) {
             return function() {
                 var args = [].slice.call(arguments);
-                if (this._isCommentRequest && this.frdXhr.readyState === 4) {
-                    var response = this.frdXhr.responseText;
-                    var prefix = ")]}'\n";
-                    response = JSON.parse(response.slice(prefix.length));
-                    var newObj = filterAllComments(response);
-                    updateBotToggle()
-                    this.__responseText = prefix + JSON.stringify(newObj);
+                if (this.frdXhr.readyState === 4) {
+                    if (this._isCommentRequest) {
+                        var response = this.frdXhr.responseText;
+                        var prefix = ")]}'\n";
+                        response = JSON.parse(response.slice(prefix.length));
+                        var newObj = filterAllComments(response);
+                        updateBotToggle()
+                        this.__responseText = prefix + JSON.stringify(newObj);
+                    } else if (this._isPatchDetailRequest) {
+                        var response = JSON.parse(this.frdXhr.responseText);
+                        var newObj = filterPatchDetail(response);
+                        updateBotToggle();
+                        this.__responseText = JSON.stringify(newObj);
+                    }
                 }
                 __super(args);
             }
@@ -58,14 +67,41 @@ function filterAllComments(obj) {
     return newObj;
 }
 
+function isBotName(name)
+{
+    return name.match(/\(Bot\)/);
+}
+
+function keepComment(is_bot, comment_text)
+{
+    var keep = !is_bot || comment_text.match(/^\[(WARN|ERROR)\]/); // let serious stuff through though
+    hasHideableComments = hasHideableComments || !keep;
+    return botCommentsEnabled || keep;
+}
+
 function filterFileComments(comments) {
     return comments.filter(function(comment) {
-        var keep = !comment.author.name.match(/\(Bot\)/) ||
-                   !comment.author ||
-                   comment.message.match(/^\[(WARN|ERROR)\]/) // let serious stuff through though
-        hasHideableComments = hasHideableComments || !keep;
-        return botCommentsEnabled || keep;
+        var is_bot = comment.author && isBotName(comment.author.name);
+        return keepComment(is_bot, comment.message);
     });
+}
+
+function findBotAccounts(patch_detail) {
+    return patch_detail.result.comments.accounts.accounts.reduce(function(ids, account) {
+        if (account.fullName && isBotName(account.fullName)) {
+            ids = ids.concat(account.id.id)
+        }
+        return ids;
+    }, [])
+}
+
+function filterPatchDetail(patch_detail) {
+    var bot_account_ids = findBotAccounts(patch_detail);
+    patch_detail.result.comments.b = patch_detail.result.comments.b.filter(function(comment) {
+        var is_bot = comment.author && bot_account_ids.indexOf(comment.author.id) >= 0;
+        return keepComment(is_bot, comment.message);
+    });
+    return patch_detail;
 }
 
 function transformGet(frd, key) {
@@ -148,4 +184,3 @@ botToggle.style.bottom = "0";
 botToggle.style.left = "0";
 botToggle.addEventListener('click', toggleBotComments);
 document.body.appendChild(botToggle);
-
