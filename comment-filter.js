@@ -181,6 +181,6 @@ function updateBotToggle() {
 botToggle.style.position = "fixed";
 botToggle.style.zIndex = "1000";
 botToggle.style.bottom = "0";
-botToggle.style.left = "0";
+botToggle.style.right = "0";
 botToggle.addEventListener('click', toggleBotComments);
 document.body.appendChild(botToggle);
